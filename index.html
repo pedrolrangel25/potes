@@ -70,6 +70,8 @@ input:focus,select:focus{outline:1px solid var(--ac);border-color:var(--ac)}
 .note{font-size:11.5px;color:var(--mut);margin-top:10px}
 .alert{background:var(--card);border:1px solid var(--bd);border-left:3px solid var(--ac);padding:10px 14px;font-size:12.5px;color:var(--mut)}
 .hide{display:none!important}
+dialog{padding:0;border:none;background:transparent;color:var(--tx);width:min(640px,calc(100% - 32px))}
+dialog::backdrop{background:rgba(0,0,0,.65)}
 .tabs{display:flex;gap:6px;flex-wrap:wrap}
 canvas{max-height:260px}
 @media (max-width:900px){
@@ -140,10 +142,25 @@ canvas{max-height:260px}
 
 <!-- POTES -->
 <section id="potes" class="hide">
-  <div class="grid g2" id="listaPotes"></div>
-  <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="novoPote">+ Novo pote</button></div>
-  <p class="note">Projeção com taxa e aporte constantes. Com "Descontar IR", aplica a tabela regressiva (CDB/Tesouro) sobre o rendimento no fim do prazo. É uma estimativa, não garantia.</p>
+  <div class="grid" id="listaPotes"></div>
+  <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="novoPote">+ Novo pote</button></div>
+  <p class="note">Cada aplicação rende pela própria taxa. "Hoje" é o valor estimado se resgatasse hoje, já sem IR. "No vencimento" é o valor líquido na data final. Vencimento vazio = liquidez diária. Resgates param de render na data do resgate. Ritmo = média do que você aportou nos últimos 6 meses. Estimativas, não garantia.</p>
 </section>
+
+<dialog id="dlg"><form id="fA" class="card">
+  <h2 id="dlgT">Nova aplicação</h2>
+  <div class="form">
+    <div><label>Pote</label><select id="aPote"></select></div>
+    <div><label>Data</label><input type="date" id="aData" required></div>
+    <div><label>Valor (R$)</label><input type="number" id="aVal" step="0.01" min="0.01" required></div>
+    <div class="ap"><label>Produto</label><input id="aProd" placeholder="ex.: CDB BS2"></div>
+    <div class="ap"><label>Imposto</label><select id="aIr"><option value="1">Com IR (CDB, Tesouro, conta)</option><option value="0">Isento (LCI, LCA)</option></select></div>
+    <div class="ap"><label>Rentabilidade</label><select id="aIdx"><option value="cdi">% do CDI</option><option value="pre">Prefixado % a.a.</option><option value="ipca">IPCA + %</option></select></div>
+    <div class="ap"><label>Taxa</label><input type="number" id="aTaxa" step="0.01" value="100"></div>
+    <div class="ap"><label>Vencimento (vazio = diária)</label><input type="date" id="aVenc"></div>
+  </div>
+  <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button type="button" class="btn" id="aCancel">Cancelar</button><button class="btn pri">Salvar</button></div>
+</form></dialog>
 
 <!-- MERCADO -->
 <section id="mercado" class="hide">
@@ -172,7 +189,7 @@ canvas{max-height:260px}
       <label class="chk"><input type="checkbox" id="fFgc" checked> Só com FGC</label>
       <label class="chk"><input type="checkbox" id="fLiq"> Só liquidez diária</label>
     </div>
-    <div class="scroll"><table class="tbl"><thead><tr><th>Título</th><th class="hm">Onde</th><th>Vencimento</th><th class="n">Bruta</th><th class="n">Líquida</th><th class="n">100% CDI</th><th class="n">Equivale a</th><th class="n hm">Mínimo</th></tr></thead><tbody id="tRank"></tbody></table></div>
+    <div class="scroll"><table class="tbl"><thead><tr><th>Título</th><th class="hm">Onde</th><th>Vencimento</th><th class="n">Bruta</th><th class="n">Líquida</th><th class="n">100% CDI</th><th class="n">Equivale a</th><th class="n hm">Mínimo</th><th></th></tr></thead><tbody id="tRank"></tbody></table></div>
     <p class="note">Rentabilidade líquida anualizada até o vencimento, recalculada com o CDI atual. "100% CDI" é quanto renderia líquido uma aplicação a 100% do CDI (com IR) pelo mesmo prazo. "Equivale a" é o % do CDI que um CDB precisaria pagar para render o mesmo que a oferta. Informação, não recomendação: confirme taxa, emissor e condições na corretora. Taxa muito acima do mercado indica risco maior.</p>
   </div>
   <div class="card"><h2>Tesouro Direto</h2>
@@ -198,11 +215,14 @@ canvas{max-height:260px}
 <script>
 const K='meus-potes-v1';
 const base={gastos:[],rendas:{},cats:['Moradia','Mercado','Transporte','Lazer','Saúde','Contas','Viagem','Outros'],
-  potes:[{nome:'Curto prazo (viagem)',saldo:0,aporte:0,taxa:13.65,meta:0,meses:12,ir:true},
-         {nome:'Longo prazo',saldo:0,aporte:0,taxa:13.65,meta:0,meses:60,ir:true}]};
+  potes:[{id:1,nome:'Curto prazo (viagem)',meta:0,apl:[]},{id:2,nome:'Longo prazo',meta:0,apl:[]}]};
+const uid=()=>Date.now()+Math.floor(Math.random()*1e3);
 const clone=o=>JSON.parse(JSON.stringify(o));
 let D;try{D=JSON.parse(localStorage.getItem(K))||clone(base)}catch(e){D=clone(base)}
-D.potes.forEach(p=>{if(p.ir===undefined)p.ir=true});
+// converte potes do formato antigo (saldo/aporte/taxa) em lista de aplicações
+function migrar(){const h0=new Date().toISOString().slice(0,10);
+  D.potes=D.potes.map(p=>p.apl?p:{id:uid(),nome:p.nome,meta:+p.meta||0,apl:+p.saldo>0?[{id:uid(),data:h0,valor:+p.saldo,produto:'Saldo inicial',ir:p.ir!==false,idx:'pre',taxa:+p.taxa||13.65,venc:''}]:[]})}
+migrar();
 const save=()=>{try{localStorage.setItem(K,JSON.stringify(D))}catch(e){}};
 const $=id=>document.getElementById(id);
 const R=v=>(+v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
@@ -254,33 +274,74 @@ $('fG').onsubmit=e=>{e.preventDefault();
 $('mes').onchange=render;
 $('renda').onchange=()=>{D.rendas[$('mes').value]=+$('renda').value||0;save();render()};
 
-// ---- potes ----
-function proj(p){const r=Math.pow(1+p.taxa/100,1/12)-1;let s=+p.saldo,ate=p.meta&&p.saldo>=p.meta?0:null;
-  for(let m=0;m<p.meses;m++){s=s*(1+r)+(+p.aporte);if(p.meta&&ate===null&&s>=p.meta)ate=m+1}
-  const inv=+p.saldo+p.aporte*p.meses,ganho=s-inv,ir=p.ir&&ganho>0?ganho*irAliq(p.meses*30.4):0;
-  return{fim:s-ir,inv,ganho:ganho-ir,ir,ate}}
+// ---- potes (lista de aplicações e resgates) ----
+const ipca12=()=>M?.indicadores?.ipca?.valor??4.5;
+const entre=(a,b)=>(new Date(b+'T12:00')-new Date(a+'T12:00'))/864e5;
+const cresce=(v,g,d)=>v*Math.pow(1+g,Math.max(0,d)/365);
+const brutaApl=a=>a.idx==='cdi'?cdi()*a.taxa/1e4:a.idx==='pre'?a.taxa/100:(1+ipca12()/100)*(1+a.taxa/100)-1;
+const rentTxt=a=>a.idx==='cdi'?`${P(a.taxa,a.taxa%1?2:0)} CDI`:a.idx==='pre'?`${P(a.taxa)} a.a.`:`IPCA+${P(a.taxa)}`;
+function calcApl(a){
+  if(a.resgate){const v=cresce(a.valor,cdi()/100,entre(a.data,hoje));return{hoje:-v,aplicado:-a.valor}}
+  const g=brutaApl(a),dV=a.venc?entre(a.data,a.venc):null,dH=Math.min(entre(a.data,hoje),dV??1e9);
+  const bH=cresce(a.valor,g,dH),gH=bH-a.valor,hojeV=bH-(a.ir&&gH>0?gH*irAliq(dH):0);
+  const dRef=dV??365,bV=cresce(a.valor,g,dRef),gV=bV-a.valor;
+  return{hoje:hojeV,aplicado:a.valor,venc:a.venc?bV-(a.ir&&gV>0?gV*irAliq(dV):0):null,netAno:a.ir?netAnn(g,dRef,irAliq(dRef)):g,g,dRef}}
+function resumoPote(p){
+  const c=p.apl.map(calcApl),hojeV=c.reduce((s,x)=>s+x.hoje,0),aplic=c.reduce((s,x)=>s+x.aplicado,0);
+  const pos=c.filter((x,i)=>!p.apl[i].resgate&&x.hoje>0),peso=pos.reduce((s,x)=>s+x.hoje,0);
+  const netMed=peso?pos.reduce((s,x)=>s+x.netAno*x.hoje,0)/peso:0,gMed=peso?pos.reduce((s,x)=>s+x.g*x.hoje,0)/peso:cdi()/100;
+  const dMed=peso?pos.reduce((s,x)=>s+x.dRef*x.hoje,0)/peso:365;
+  const ini=new Date();ini.setMonth(ini.getMonth()-6);const i6=ini.toISOString().slice(0,10);
+  const rec=p.apl.filter(a=>!a.resgate&&a.data>=i6&&a.data<=hoje),prim=rec.reduce((m,a)=>a.data<m?a.data:m,hoje);
+  const ritmo=rec.reduce((s,a)=>s+a.valor,0)/Math.max(1,entre(prim,hoje)/30.4);
+  let prev=null;if(p.meta&&hojeV<p.meta&&ritmo>0){const r=Math.pow(1+gMed,1/12)-1;let s=hojeV,m=0;while(s<p.meta&&m<600){s=s*(1+r)+ritmo;m++}if(m<600)prev=m}
+  const prox=p.apl.filter(a=>!a.resgate&&a.venc&&a.venc>=hoje).sort((a,b)=>a.venc.localeCompare(b.venc))[0];
+  return{c,hojeV,aplic,netMed,eq:peso?equivCdi(netMed,dMed):null,ritmo,prev,prox}}
+const mesesTxt=m=>{const d=new Date();d.setMonth(d.getMonth()+m);return d.toLocaleDateString('pt-BR',{month:'short',year:'numeric'})};
 function potes(){
-  $('listaPotes').innerHTML=D.potes.map((p,i)=>{const x=proj(p),pc=p.meta?Math.min(100,p.saldo/p.meta*100):0;
+  $('listaPotes').innerHTML=D.potes.map((p,i)=>{const r=resumoPote(p),pc=p.meta?Math.min(100,Math.max(0,r.hojeV/p.meta*100)):0;
+  const linhas=p.apl.map((a,j)=>[a,r.c[j]]).sort((x,y)=>y[0].data.localeCompare(x[0].data)).map(([a,x])=>`<tr>
+    <td>${BR(a.data)}</td><td>${a.resgate?'<span class="neg">RESGATE</span>':esc(a.produto||'—')}${!a.resgate&&!a.ir?' <span class="tag lci">ISENTO</span>':''}</td>
+    <td class="n">${a.resgate?'':rentTxt(a)}</td><td class="mono">${a.resgate?'':a.venc?BR(a.venc):'<span class="sub">diária</span>'}</td>
+    <td class="n">${R(x.aplicado)}</td><td class="n">${R(x.hoje)}</td><td class="n hm">${x.venc!=null?R(x.venc):'—'}</td>
+    <td class="n"><button class="icon" data-p="${i}" data-a="${a.id}" title="apagar">✕</button></td></tr>`).join('');
   return `<div class="card"><div class="pote-h"><input data-i="${i}" data-k="nome" value="${esc(p.nome)}"><button class="icon" data-del="${i}" title="remover pote">✕</button></div>
-  <div class="form">
-   <div><label>Saldo atual</label><input type="number" step="0.01" data-i="${i}" data-k="saldo" value="${p.saldo}"></div>
-   <div><label>Aporte mensal</label><input type="number" step="0.01" data-i="${i}" data-k="aporte" value="${p.aporte}"></div>
-   <div><label>Taxa % a.a. <a class="sub" style="cursor:pointer;color:var(--ac)" data-cdi="${i}">usar CDI</a></label><input type="number" step="0.01" data-i="${i}" data-k="taxa" value="${p.taxa}"></div>
-   <div><label>Meta (R$)</label><input type="number" step="0.01" data-i="${i}" data-k="meta" value="${p.meta}"></div>
-   <div><label>Prazo (meses)</label><input type="number" min="1" data-i="${i}" data-k="meses" value="${p.meses}"></div>
-   <div><label class="chk"><input type="checkbox" data-i="${i}" data-k="ir" ${p.ir?'checked':''}> Descontar IR</label></div>
+  <div class="grid g4">
+    <div class="kpi"><div class="l">Valor hoje</div><div class="v">${R(r.hojeV)}</div><div class="d">Aplicado ${R(r.aplic)} · <span class="${r.hojeV>=r.aplic?'pos':'neg'}">${R(r.hojeV-r.aplic)}</span></div></div>
+    <div class="kpi"><div class="l">Rentab. líquida média</div><div class="v">${r.eq!=null?P(r.netMed*100):'—'}</div><div class="d">${r.eq!=null?`≈ ${r.eq.toFixed(0)}% do CDI`:'sem aplicações'}</div></div>
+    <div class="kpi"><div class="l">Seu ritmo</div><div class="v">${R(r.ritmo)}</div><div class="d">por mês (últimos 6 meses)</div></div>
+    <div class="kpi"><div class="l">Próx. vencimento</div><div class="v">${r.prox?BR(r.prox.venc):'—'}</div><div class="d">${r.prox?esc(r.prox.produto||''):'nenhum'}</div></div>
   </div>
-  ${p.meta?`<div class="bar"><i style="width:${pc}%"></i></div><div class="sub">${pc.toFixed(0)}% da meta de ${R(p.meta)}</div>`:''}
-  <div class="kpi" style="margin-top:12px"><div class="l">Em ${p.meses} meses</div><div class="v">${R(x.fim)}</div>
-  <div class="d">Aplicado ${R(x.inv)} · rendimento <span class="pos">${R(x.ganho)}</span>${x.ir?` · IR ${R(x.ir)}`:''}${p.meta?(x.ate!==null?` · meta no mês ${x.ate}`:' · <span class="neg">meta não atingida</span>'):''}</div></div></div>`}).join('');
+  <div class="form" style="margin-top:12px;grid-template-columns:minmax(140px,220px) 1fr;align-items:center">
+    <div><label>Meta (R$)</label><input type="number" step="0.01" min="0" data-i="${i}" data-k="meta" value="${p.meta||''}" placeholder="opcional"></div>
+    <div>${p.meta?`<div class="bar"><i style="width:${pc}%"></i></div><div class="sub">${pc.toFixed(0)}% de ${R(p.meta)} · ${r.hojeV>=p.meta?'<span class="pos">meta atingida</span>':r.prev!=null?`faltam ${R(p.meta-r.hojeV)} · no seu ritmo, chega em <b>${mesesTxt(r.prev)}</b>`:`faltam ${R(p.meta-r.hojeV)} · registre aportes para estimar`}</div>`:''}</div>
+  </div>
+  <div style="display:flex;gap:8px;margin:12px 0 4px"><button class="btn pri sm" data-add="${i}">+ Aplicação</button><button class="btn sm" data-res="${i}">− Resgate</button></div>
+  <div class="scroll"><table class="tbl"><thead><tr><th>Data</th><th>Produto</th><th class="n">Rentab.</th><th>Venc.</th><th class="n">Aplicado</th><th class="n">Hoje</th><th class="n hm">No venc.</th><th></th></tr></thead>
+  <tbody>${linhas||'<tr><td colspan="8" class="sub">Nenhuma aplicação ainda.</td></tr>'}</tbody></table></div></div>`}).join('')||'<div class="card sub">Nenhum pote. Crie um abaixo.</div>';
 }
-$('listaPotes').onchange=e=>{const{i,k}=e.target.dataset;if(i===undefined)return;
-  D.potes[i][k]=k==='nome'?e.target.value:k==='ir'?e.target.checked:+e.target.value||0;
-  if(k==='meses'&&D.potes[i].meses<1)D.potes[i].meses=1;save();render()};
+$('listaPotes').onchange=e=>{const{i,k}=e.target.dataset;if(i===undefined)return;D.potes[i][k]=k==='nome'?e.target.value:+e.target.value||0;save();render()};
 $('listaPotes').onclick=e=>{const d=e.target.dataset;
-  if(d.del!==undefined&&confirm('Remover este pote?')){D.potes.splice(d.del,1);save();render()}
-  if(d.cdi!==undefined){D.potes[d.cdi].taxa=cdi();save();render()}};
-$('novoPote').onclick=()=>{D.potes.push({nome:'Novo pote',saldo:0,aporte:0,taxa:cdi(),meta:0,meses:24,ir:true});save();render()};
+  if(d.del!==undefined&&confirm('Remover este pote e todas as aplicações dele?')){D.potes.splice(d.del,1);save();render()}
+  if(d.a!==undefined&&confirm('Apagar este lançamento?')){const p=D.potes[d.p];p.apl=p.apl.filter(a=>a.id!=d.a);save();render()}
+  if(d.add!==undefined)abrirDlg('apl',+d.add);
+  if(d.res!==undefined)abrirDlg('res',+d.res)};
+$('novoPote').onclick=()=>{D.potes.push({id:uid(),nome:'Novo pote',meta:0,apl:[]});save();render()};
+let dlgModo='apl';
+function abrirDlg(modo,pi,pre={}){
+  if(!D.potes.length)D.potes.push({id:uid(),nome:'Longo prazo',meta:0,apl:[]});
+  dlgModo=modo;$('dlgT').textContent=modo==='res'?'Registrar resgate':'Nova aplicação';
+  document.querySelectorAll('#fA .ap').forEach(e=>e.classList.toggle('hide',modo==='res'));
+  $('aPote').innerHTML=D.potes.map((p,i)=>`<option value="${i}">${esc(p.nome)}</option>`).join('');$('aPote').value=pi??0;
+  $('aData').value=hoje;$('aVal').value='';$('aProd').value=pre.produto||'';$('aIr').value=pre.ir===false?'0':'1';
+  $('aIdx').value=pre.idx||'cdi';$('aTaxa').value=pre.taxa??100;$('aVenc').value=pre.venc||'';
+  $('dlg').showModal();$('aVal').focus()}
+$('aCancel').onclick=()=>$('dlg').close();
+$('fA').onsubmit=e=>{e.preventDefault();const p=D.potes[+$('aPote').value];if(!p)return;
+  const a={id:uid(),data:$('aData').value,valor:+$('aVal').value};
+  if(dlgModo==='res')a.resgate=true;
+  else Object.assign(a,{produto:$('aProd').value.trim(),ir:$('aIr').value==='1',idx:$('aIdx').value,taxa:+$('aTaxa').value||0,venc:$('aVenc').value});
+  p.apl.push(a);save();$('dlg').close();render()};
 
 // ---- início ----
 function inicio(){
@@ -289,10 +350,10 @@ function inicio(){
   $('kGasto').textContent=R(t);$('kGastoD').innerHTML=ant?`${t>ant?'▲':'▼'} ${P(Math.abs(t/ant-1)*100,0)} vs mês anterior`:'&nbsp;';
   $('kSobra').textContent=r?R(r-t):'—';$('kSobra').className='v '+(r?(r-t>=0?'pos':'neg'):'');
   $('kSobraD').textContent=r?`${P((r-t)/r*100,0)} da renda`:'Informe a renda em Gastos';
-  const tp=D.potes.reduce((s,p)=>s+(+p.saldo),0),ap=D.potes.reduce((s,p)=>s+(+p.aporte),0);
-  $('kPotes').textContent=R(tp);$('kPotesD').textContent=`${R(ap)}/mês em aportes`;
-  $('resumoPotes').innerHTML=D.potes.map(p=>{const pc=p.meta?Math.min(100,p.saldo/p.meta*100):0;
-    return `<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between"><b style="font-weight:600">${esc(p.nome)}</b><span class="sub">${R(p.saldo)}${p.meta?' de '+R(p.meta):''}</span></div>${p.meta?`<div class="bar"><i style="width:${pc}%"></i></div>`:''}</div>`}).join('')||'<span class="sub">Nenhum pote.</span>';
+  const rs=D.potes.map(resumoPote),tp=rs.reduce((s,x)=>s+x.hojeV,0),rit=rs.reduce((s,x)=>s+x.ritmo,0);
+  $('kPotes').textContent=R(tp);$('kPotesD').textContent=`ritmo de ${R(rit)}/mês`;
+  $('resumoPotes').innerHTML=D.potes.map((p,i)=>{const v=rs[i].hojeV,pc=p.meta?Math.min(100,Math.max(0,v/p.meta*100)):0;
+    return `<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between"><b style="font-weight:600">${esc(p.nome)}</b><span class="sub mono">${R(v)}${p.meta?' / '+R(p.meta):''}</span></div>${p.meta?`<div class="bar"><i style="width:${pc}%"></i></div>`:''}</div>`}).join('')||'<span class="sub">Nenhum pote.</span>';
 }
 let c1,c2;const cor=['#ffb000','#4fb3ff','#1fd17d','#ff4d4f','#b38bff','#2dd4bf','#ff7ac6','#8a8f98','#ff8a3d','#c6e14b'];
 function graficos(){
@@ -318,9 +379,16 @@ function ranking(){
   const l=M.ofertas.map(o=>{const d=dias(o.vencimento),g=brutaOferta(o),net=o.tipo==='CDB'?netAnn(g,d,irAliq(d)):g;
     return{...o,d,g,net,bench:netAnn(cdi()/100,d,irAliq(d)),eq:equivCdi(net,d)}})
    .filter(o=>o.d>a*365&&o.d<=b*365&&(!tipo||o.tipo===tipo)&&(!em||(o.emissor+' '+o.nome).toLowerCase().includes(em))&&(!$('fFgc').checked||o.fgc)&&(!$('fLiq').checked||o.liquidezDiaria))
-   .sort((x,y)=>y.net-x.net).slice(0,25);
-  $('tRank').innerHTML=l.map(o=>{return `<tr><td><span class="tag ${o.tipo.toLowerCase()}">${o.tipo}</span> ${esc(o.nome)}<div class="sub">${esc(o.emissor)}${o.risco&&o.risco!=='Baixo'?` · risco ${esc(o.risco.toLowerCase())}`:''}${o.liquidezDiaria?' · liquidez diária':''}</div></td>
-    <td class="hm sub">${esc(o.distribuidor)}</td><td>${BR(o.vencimento)}</td><td class="n">${P(o.g*100)}</td><td class="n"><b>${P(o.net*100)}</b></td><td class="n sub">${P(o.bench*100)}</td><td class="n"><b class="${o.eq>=100?'pos':'neg'}">${o.eq.toFixed(0)}%</b></td><td class="n hm">${R(o.minimo)}</td></tr>`}).join('')||'<tr><td colspan="7" class="sub">Nenhuma oferta com esses filtros.</td></tr>';
+   .sort((x,y)=>y.net-x.net).slice(0,25);rankAtual=l;
+  $('tRank').innerHTML=l.map((o,k)=>{return `<tr><td><span class="tag ${o.tipo.toLowerCase()}">${o.tipo}</span> ${esc(o.nome)}<div class="sub">${esc(o.emissor)}${o.risco&&o.risco!=='Baixo'?` · risco ${esc(o.risco.toLowerCase())}`:''}${o.liquidezDiaria?' · liquidez diária':''}</div></td>
+    <td class="hm sub">${esc(o.distribuidor)}</td><td>${BR(o.vencimento)}</td><td class="n">${P(o.g*100)}</td><td class="n"><b>${P(o.net*100)}</b></td><td class="n sub">${P(o.bench*100)}</td><td class="n"><b class="${o.eq>=100?'pos':'neg'}">${o.eq.toFixed(0)}%</b></td><td class="n hm">${R(o.minimo)}</td><td class="n"><button class="btn sm" data-reg="${k}" title="registrar no pote">+ Registrar</button></td></tr>`}).join('')||'<tr><td colspan="9" class="sub">Nenhuma oferta com esses filtros.</td></tr>';
+}
+let rankAtual=[];
+// "Registrar": abre o formulário de aplicação já preenchido com a oferta
+$('tRank').onclick=e=>{const o=rankAtual[e.target.dataset.reg];if(!o)return;
+  const cdiPct=/CDI/i.test(o.indexador)&&o.modalidade==='POST_FIXED'&&o.taxa>=50,ipca=/IPCA/i.test(o.indexador);
+  const pi=Math.max(0,D.potes.findIndex(p=>/longo/i.test(p.nome)));
+  abrirDlg('apl',pi,{produto:o.nome,ir:o.tipo==='CDB',idx:cdiPct?'cdi':ipca?'ipca':'pre',taxa:cdiPct||ipca?o.taxa:+(o.g*100).toFixed(2),venc:o.vencimento});
 }
 // % do CDI que um CDB (com IR) precisaria pagar para ter o mesmo líquido anual no prazo
 function equivCdi(net,d){const T=d/365,t=irAliq(d);if(T<=0)return 0;
@@ -374,7 +442,7 @@ async function carregar(){
 
 // ---- ajustes ----
 $('exp').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(D,null,1)],{type:'application/json'}));a.download='potes-backup.json';a.click()};
-$('imp').onchange=e=>{const f=e.target.files[0];if(!f)return;f.text().then(t=>{try{const n=JSON.parse(t);if(!n.gastos||!n.potes)throw 0;D=n;save();render();alert('Backup importado!')}catch(_){alert('Arquivo inválido.')}})};
+$('imp').onchange=e=>{const f=e.target.files[0];if(!f)return;f.text().then(t=>{try{const n=JSON.parse(t);if(!n.gastos||!n.potes)throw 0;D=n;migrar();save();render();alert('Backup importado!')}catch(_){alert('Arquivo inválido.')}})};
 $('addCat').onclick=()=>{const c=$('novaCat').value.trim();if(c&&!D.cats.includes(c)){D.cats.push(c);save();cats()}$('novaCat').value=''};
 $('limpar').onclick=()=>{if(confirm('Apagar todos os seus dados? Isso não pode ser desfeito.')){D=clone(base);save();render()}};
 
