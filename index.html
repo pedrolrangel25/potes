@@ -143,7 +143,7 @@ canvas{max-height:260px}
 <!-- POTES -->
 <section id="potes" class="hide">
   <div class="grid" id="listaPotes"></div>
-  <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="novoPote">+ Novo pote</button></div>
+  <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="novoPoteC">+ Pote curto (100% CDI)</button><button class="btn" id="novoPote">+ Pote de investimentos</button></div>
   <p class="note">Cada aplicação rende pela própria taxa. "Hoje" é o valor estimado se resgatasse hoje, já sem IR. "No vencimento" é o valor líquido na data final. Vencimento vazio = liquidez diária. Resgates param de render na data do resgate. Ritmo = média do que você aportou nos últimos 6 meses. Estimativas, não garantia.</p>
 </section>
 
@@ -215,13 +215,14 @@ canvas{max-height:260px}
 <script>
 const K='meus-potes-v1';
 const base={gastos:[],rendas:{},cats:['Moradia','Mercado','Transporte','Lazer','Saúde','Contas','Viagem','Outros'],
-  potes:[{id:1,nome:'Curto prazo (viagem)',meta:0,apl:[]},{id:2,nome:'Longo prazo',meta:0,apl:[]}]};
+  potes:[{id:1,nome:'Curto prazo (viagem)',meta:0,simples:true,apl:[]},{id:2,nome:'Longo prazo',meta:0,apl:[]}]};
 const uid=()=>Date.now()+Math.floor(Math.random()*1e3);
 const clone=o=>JSON.parse(JSON.stringify(o));
 let D;try{D=JSON.parse(localStorage.getItem(K))||clone(base)}catch(e){D=clone(base)}
 // converte potes do formato antigo (saldo/aporte/taxa) em lista de aplicações
 function migrar(){const h0=new Date().toISOString().slice(0,10);
-  D.potes=D.potes.map(p=>p.apl?p:{id:uid(),nome:p.nome,meta:+p.meta||0,apl:+p.saldo>0?[{id:uid(),data:h0,valor:+p.saldo,produto:'Saldo inicial',ir:p.ir!==false,idx:'pre',taxa:+p.taxa||13.65,venc:''}]:[]})}
+  D.potes=D.potes.map(p=>p.apl?p:{id:uid(),nome:p.nome,meta:+p.meta||0,apl:+p.saldo>0?[{id:uid(),data:h0,valor:+p.saldo,produto:'Saldo inicial',ir:p.ir!==false,idx:'pre',taxa:+p.taxa||13.65,venc:''}]:[]});
+  D.potes.forEach(p=>{if(p.simples===undefined)p.simples=/curto/i.test(p.nome)})}
 migrar();
 const save=()=>{try{localStorage.setItem(K,JSON.stringify(D))}catch(e){}};
 const $=id=>document.getElementById(id);
@@ -299,7 +300,7 @@ function resumoPote(p){
   return{c,hojeV,aplic,netMed,eq:peso?equivCdi(netMed,dMed):null,ritmo,prev,prox}}
 const mesesTxt=m=>{const d=new Date();d.setMonth(d.getMonth()+m);return d.toLocaleDateString('pt-BR',{month:'short',year:'numeric'})};
 function potes(){
-  $('listaPotes').innerHTML=D.potes.map((p,i)=>{const r=resumoPote(p),pc=p.meta?Math.min(100,Math.max(0,r.hojeV/p.meta*100)):0;
+  $('listaPotes').innerHTML=D.potes.map((p,i)=>{if(p.simples)return poteSimples(p,i);const r=resumoPote(p),pc=p.meta?Math.min(100,Math.max(0,r.hojeV/p.meta*100)):0;
   const linhas=p.apl.map((a,j)=>[a,r.c[j]]).sort((x,y)=>y[0].data.localeCompare(x[0].data)).map(([a,x])=>`<tr>
     <td>${BR(a.data)}</td><td>${a.resgate?'<span class="neg">RESGATE</span>':esc(a.produto||'—')}${!a.resgate&&!a.ir?' <span class="tag lci">ISENTO</span>':''}</td>
     <td class="n">${a.resgate?'':rentTxt(a)}</td><td class="mono">${a.resgate?'':a.venc?BR(a.venc):'<span class="sub">diária</span>'}</td>
@@ -320,13 +321,41 @@ function potes(){
   <div class="scroll"><table class="tbl"><thead><tr><th>Data</th><th>Produto</th><th class="n">Rentab.</th><th>Venc.</th><th class="n">Aplicado</th><th class="n">Hoje</th><th class="n hm">No venc.</th><th></th></tr></thead>
   <tbody>${linhas||'<tr><td colspan="8" class="sub">Nenhuma aplicação ainda.</td></tr>'}</tbody></table></div></div>`}).join('')||'<div class="card sub">Nenhum pote. Crie um abaixo.</div>';
 }
+// pote curto: só movimentos (+ aporte / − retirada), sempre 100% do CDI com liquidez diária
+function poteSimples(p,i){
+  const r=resumoPote(p),g=cdi()/100,pc=p.meta?Math.min(100,Math.max(0,r.hojeV/p.meta*100)):0;
+  const proj=m=>{const d=m*30.4,b=r.hojeV*Math.pow(1+g,d/365),gan=b-r.hojeV;return b-(gan>0?gan*irAliq(d):0)};
+  const linhas=p.apl.map((a,j)=>[a,r.c[j]]).sort((x,y)=>y[0].data.localeCompare(x[0].data)).map(([a,x])=>`<tr><td>${BR(a.data)}</td>
+    <td class="n ${a.resgate?'neg':'pos'}">${a.resgate?'−':'+'}${R(a.valor)}</td><td class="n">${R(x.hoje)}</td>
+    <td class="n"><button class="icon" data-p="${i}" data-a="${a.id}" title="apagar">✕</button></td></tr>`).join('');
+  return `<div class="card"><div class="pote-h"><input data-i="${i}" data-k="nome" value="${esc(p.nome)}"><button class="icon" data-del="${i}" title="remover pote">✕</button></div>
+  <div class="grid g4">
+    <div class="kpi"><div class="l">Saldo hoje</div><div class="v">${R(r.hojeV)}</div><div class="d">100% do CDI (${P(cdi())}) · líquido de IR</div></div>
+    <div class="kpi"><div class="l">Em 6 meses</div><div class="v">${R(proj(6))}</div><div class="d">+${R(proj(6)-r.hojeV)} sem novos aportes</div></div>
+    <div class="kpi"><div class="l">Em 12 meses</div><div class="v">${R(proj(12))}</div><div class="d">+${R(proj(12)-r.hojeV)} sem novos aportes</div></div>
+    <div class="kpi"><div class="l">Meta</div><input type="number" step="0.01" min="0" data-i="${i}" data-k="meta" value="${p.meta||''}" placeholder="opcional" style="margin-top:6px">
+      ${p.meta?`<div class="bar"><i style="width:${pc}%"></i></div><div class="d">${pc.toFixed(0)}% · faltam ${R(Math.max(0,p.meta-r.hojeV))}</div>`:''}</div>
+  </div>
+  <div class="form" style="margin-top:12px;grid-template-columns:minmax(120px,160px) minmax(140px,220px) auto">
+    <div><label>Data</label><input type="date" id="svData${i}" value="${hoje}"></div>
+    <div><label>Aporte (negativo = retirada)</label><input type="number" step="0.01" id="svVal${i}" data-sv="${i}" placeholder="ex.: 200 ou -150"></div>
+    <div><button class="btn pri" data-salvar="${i}">Salvar</button></div>
+  </div>
+  <div class="scroll" style="margin-top:10px"><table class="tbl"><thead><tr><th>Data</th><th class="n">Movimento</th><th class="n">Vale hoje</th><th></th></tr></thead>
+  <tbody>${linhas||'<tr><td colspan="4" class="sub">Nenhum aporte ainda.</td></tr>'}</tbody></table></div></div>`}
+function salvarMov(i){const v=+$('svVal'+i).value;if(!v)return;
+  D.potes[i].apl.push({id:uid(),data:$('svData'+i).value||hoje,valor:Math.abs(v),...(v<0?{resgate:true}:{produto:'Conta 100% CDI',ir:true,idx:'cdi',taxa:100,venc:''})});
+  save();render()}
+$('listaPotes').onkeydown=e=>{if(e.key==='Enter'&&e.target.dataset.sv!==undefined)salvarMov(+e.target.dataset.sv)};
 $('listaPotes').onchange=e=>{const{i,k}=e.target.dataset;if(i===undefined)return;D.potes[i][k]=k==='nome'?e.target.value:+e.target.value||0;save();render()};
 $('listaPotes').onclick=e=>{const d=e.target.dataset;
   if(d.del!==undefined&&confirm('Remover este pote e todas as aplicações dele?')){D.potes.splice(d.del,1);save();render()}
   if(d.a!==undefined&&confirm('Apagar este lançamento?')){const p=D.potes[d.p];p.apl=p.apl.filter(a=>a.id!=d.a);save();render()}
+  if(d.salvar!==undefined)salvarMov(+d.salvar);
   if(d.add!==undefined)abrirDlg('apl',+d.add);
   if(d.res!==undefined)abrirDlg('res',+d.res)};
 $('novoPote').onclick=()=>{D.potes.push({id:uid(),nome:'Novo pote',meta:0,apl:[]});save();render()};
+$('novoPoteC').onclick=()=>{D.potes.push({id:uid(),nome:'Novo pote curto',meta:0,simples:true,apl:[]});save();render()};
 let dlgModo='apl';
 function abrirDlg(modo,pi,pre={}){
   if(!D.potes.length)D.potes.push({id:uid(),nome:'Longo prazo',meta:0,apl:[]});
