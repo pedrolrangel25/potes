@@ -98,6 +98,7 @@ canvas{max-height:260px}
     <a data-t="gastos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>Gastos</a>
     <a data-t="potes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8h12l-1 12H7z"/><path d="M9 8V5h6v3"/></svg>Potes</a>
     <a data-t="mercado"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>Mercado</a>
+    <a data-t="entenda"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5"/></svg>Entenda</a>
     <a data-t="ajustes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Ajustes</a>
   </nav>
   <div id="ticker"></div>
@@ -199,6 +200,26 @@ canvas{max-height:260px}
   </div>
 </section>
 
+<!-- ENTENDA -->
+<section id="entenda" class="hide">
+  <div class="grid g2">
+    <div class="card"><h2>O que é renda fixa?</h2>
+      <p>Pense assim: <b>você empresta seu dinheiro e recebe juros por isso.</b></p>
+      <p>Quem pega o dinheiro emprestado pode ser:</p>
+      <ul><li>o <b>governo</b> (Tesouro Direto);</li><li>um <b>banco</b> (CDB, LCI, LCA).</li></ul>
+      <p>Em troca, eles te devolvem o dinheiro <b>com juros</b>. As regras de quanto você vai ganhar e quando vai receber ficam combinadas <b>no dia em que você aplica</b>. É como a poupança, só que geralmente rende mais.</p>
+      <p><b>Exemplo:</b> você aplica R$ 1.000 num CDB que rende 100% do CDI. Hoje isso dá uns <span class="mono" id="entCdi">13,65%</span> ao ano. Depois de um ano, você tem por volta de <b class="mono" id="entEx">R$ 1.112</b>, já descontado o imposto.</p>
+      <p>E se o banco quebrar? Existe o <b>FGC</b>, uma espécie de seguro que devolve até <b>R$ 250 mil por pessoa em cada banco</b>.</p>
+    </div>
+    <div class="card"><h2>Por que renda fixa e não ações?</h2>
+      <p><b>1. É mais segura.</b> Na renda fixa você sabe as regras desde o começo, e o seu dinheiro cresce todo dia, aos pouquinhos. Nas ações, você vira <b>sócio de uma empresa</b>: o preço sobe e desce todos os dias e pode <b>cair bastante</b>. Às vezes demora anos para recuperar.</p>
+      <p><b>2. A gente não tem tempo para estudar ações.</b> Para investir bem em ações é preciso estudar as empresas, acompanhar resultados, notícias e o mercado. Sem esse estudo, é fácil comprar na hora errada ou vender no prejuízo por desespero. Na renda fixa, você <b>aplica e pode esquecer</b> até a data de resgate.</p>
+      <div class="alert" style="margin-top:12px"><b style="color:var(--tx)">Resumindo:</b> a renda fixa é o jeito <b style="color:var(--tx)">mais simples e seguro</b> de fazer o dinheiro render mais que a poupança, sem precisar virar especialista. Ações podem render mais no longo prazo, mas exigem <b style="color:var(--tx)">estudo, tempo e estômago</b> para aguentar as quedas, e esse não é o objetivo deste app.</div>
+    </div>
+  </div>
+  <p class="note">Conteúdo educativo, não é recomendação de investimento.</p>
+</section>
+
 <!-- AJUSTES -->
 <section id="ajustes" class="hide">
   <div class="grid g2">
@@ -244,7 +265,7 @@ addEventListener('keydown',e=>{if(/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)
   const a=document.querySelectorAll('#nav a')[+e.key-1];if(a)a.click()});
 
 // ---- navegação ----
-const titulos={inicio:'Início',gastos:'Gastos',potes:'Potes',mercado:'Mercado',ajustes:'Ajustes'};
+const titulos={inicio:'Início',gastos:'Gastos',potes:'Potes',mercado:'Mercado',entenda:'Entenda',ajustes:'Ajustes'};
 document.querySelectorAll('#nav a').forEach(a=>a.onclick=()=>{
   document.querySelectorAll('#nav a').forEach(x=>x.classList.toggle('on',x===a));
   document.querySelectorAll('main>section').forEach(s=>s.classList.toggle('hide',s.id!==a.dataset.t));
@@ -458,6 +479,7 @@ function mercado(){
   const fi=M.focus?.IPCA?.anos;
   $('ticker').innerHTML=[['SELIC',ind.selic&&P(ind.selic.valor)],['CDI',ind.cdi&&P(ind.cdi.valor)],['IPCA 12M',ind.ipca&&P(ind.ipca.valor)],
     [`FOCUS SELIC ${ano}`,f?.[ano]!=null&&P(f[ano])],[`FOCUS IPCA ${ano}`,fi?.[ano]!=null&&P(fi[ano])]].filter(x=>x[1]).map(([l,v])=>`<span>${l}<b>${v}</b></span>`).join('');
+  $('entCdi').textContent=P(cdi());$('entEx').textContent=R(1000+(1000*cdi()/100)*(1-irAliq(365)));
   $('kSelic').textContent=ind.selic?P(ind.selic.valor):'—';$('kSelicD').textContent=ind.cdi?`CDI ${P(ind.cdi.valor)}`:'';
   ranking();tesouro();comparar();
 }
